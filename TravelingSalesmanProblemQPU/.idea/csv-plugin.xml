@@ -17,6 +17,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\TravelingSalesmanProblemQPU\TravelingSalesmanProblemQPU-QuantumSolvers.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\TravelingSalesmanProblemQPU\TravelingSalesmanProblemQPU.py">
           <value>
             <Attribute>
