@@ -9,6 +9,8 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
+//#include "sm_60_atomic_functions.h"
+
 
 #define MAX_THREADS 1024
 #define MAX_BLOCKS 30
@@ -37,9 +39,9 @@
 #endif
 
 
+__device__ __shared__ int32_t shared_cost;
 
 
-//__device__ __shared__ float shared_cost;
 
 // Quick implementation of factorial of a number
 __host__ unsigned long long factorial(int32_t n)
@@ -55,8 +57,7 @@ int main(int argc, char *argv[])
 {
 
 	if (argc < 2)  // Two arguments need to be specified at least. Name of the programm itself and number of nodes to compute.
-	{
-		printf("Number of nodes must be specified");
+	{	printf("Number of nodes must be specified");
 		return 0;
 	}
 	int size8 = sizeof(int8_t);
@@ -66,22 +67,20 @@ int main(int argc, char *argv[])
 	cudaEvent_t startEvent, stopEvent;
 
 	// Unified memory
-	float shared_cost;
+	//float* shared_cost;
 
 	// Host variables 
 	int8_t * nodes, *shortestPath, *selected, selectedK = 0;
-	int32_t numNodes = atoi(argv[1]); //Number of cities to be computed
-	float** edgesWeights;
-	float* costs;
+	int32_t numNodes = atoi(argv[1]), *cost; //Number of cities to be computed
+	int32_t* edgesWeights;
 
 	unsigned long long threads_per_kernel;
 
 	// Device variables 
 	int8_t * d_nodes, *d_shortestPath, *d_selected, * d_selectedK;
-	int32_t *d_numNodes;
-	unsigned long long * d_threads_per_kernel;
-	float** d_edgesWeights;
-	float* d_costs;
+	int32_t *d_numNodes, *d_costs;
+	int32_t* d_edgesWeights;
+	unsigned long long* d_threads_per_kernel; 
 
 	total_permutations = factorial(numNodes - 1); // Number of combinations to be computed is (N-1)! where is N is the number of nodes.
 	printf("%d nodes results in %llu combinations\n", numNodes - 1, total_permutations);
@@ -111,7 +110,7 @@ int main(int argc, char *argv[])
 		num_kernels *= k;
 	}
 	threads_per_kernel = num_blocks * num_threads;
-
+	
 	// Print problem configuration
 	printf("K selected: %d\n", selectedK);
 	printf("Num_threads: %llu\n Thread_perms: %llu\n Num_blocks %llu\n Num_kernels %llu\n Threads_per_kernel: %llu\n", num_threads, thread_perms, num_blocks, num_kernels, threads_per_kernel);
@@ -123,20 +122,20 @@ int main(int argc, char *argv[])
 	// Memory allocations with SAFE macro in case one of them fails due to memory not being able.
 	SAFE(nodes = (int8_t *)malloc(numNodes * size8));
 	SAFE(shortestPath = (int8_t *)calloc(num_blocks * numNodes, size8));
-	SAFE(edgesWeights = (float **)malloc(numNodes * sizeof(float) * numNodes));
-	SAFE(costs = (float*)calloc(num_blocks * numNodes, sizeof(float)));
+	SAFE(edgesWeights = (int32_t*)malloc(numNodes * sizeof(int32_t) * numNodes));
+	SAFE(cost = (int32_t*)calloc(num_blocks * numNodes, sizeof(int32_t)));
 	SAFE(selected = (int8_t *)malloc(threads_per_kernel * numNodes * size8));
 
 	// Device memory allocation for data in the device (GPU)
 	CUDA_RUN(cudaMalloc((void **)&d_nodes, numNodes * size8));
 	CUDA_RUN(cudaMalloc((void **)&d_shortestPath, numNodes * size8 * num_blocks));
-	CUDA_RUN(cudaMalloc((void **)&d_edgesWeights, numNodes * sizeof(float) * numNodes));
-	CUDA_RUN(cudaMalloc((void **)&d_costs, num_blocks * sizeof(float)));
+	CUDA_RUN(cudaMalloc((void **)&d_edgesWeights, numNodes * sizeof(int32_t) * numNodes));
+	CUDA_RUN(cudaMalloc((void **)&d_costs, num_blocks * sizeof(int32_t)));
 	CUDA_RUN(cudaMalloc((void **)&d_numNodes, size32));
 	CUDA_RUN(cudaMalloc((void **)&d_selectedK, size8));
 	CUDA_RUN(cudaMalloc((void **)&d_selected, threads_per_kernel * numNodes * size8));
 	CUDA_RUN(cudaMalloc((void **)&d_threads_per_kernel, sizeof(unsigned long long)));
-	CUDA_RUN(cudaMallocManaged((void **)&shared_cost, sizeof(float)));
+	
 
 	srand(time(NULL));
 	initialize(nodes, edgesWeights, numNodes);
@@ -144,12 +143,12 @@ int main(int argc, char *argv[])
 	// Translation of the data from host (CPU) to the device (GPU)
 	CUDA_RUN(cudaMemcpy(d_nodes, nodes, numNodes * size8, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(d_shortestPath, shortestPath, numNodes * size8 * num_blocks, cudaMemcpyHostToDevice));
-	CUDA_RUN(cudaMemcpy(d_edgesWeights, edgesWeights, numNodes * sizeof(float) * numNodes, cudaMemcpyHostToDevice));
+	CUDA_RUN(cudaMemcpy(d_edgesWeights, edgesWeights, numNodes * sizeof(int32_t) * numNodes, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(d_numNodes, &numNodes, size32, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(d_selectedK, &selectedK, size8, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(d_selected, selected, threads_per_kernel * numNodes * size8, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(d_threads_per_kernel, &threads_per_kernel, sizeof(unsigned long long), cudaMemcpyHostToDevice));
-	CUDA_RUN(cudaMemcpy(d_costs, costs, num_blocks * sizeof(float), cudaMemcpyHostToDevice));
+	CUDA_RUN(cudaMemcpy(d_costs, cost, num_blocks * sizeof(int32_t), cudaMemcpyHostToDevice));
 
 	// Creation of time events to measure times
 	CUDA_RUN(cudaEventCreate(&startEvent));
@@ -159,10 +158,12 @@ int main(int argc, char *argv[])
 	// Kernels launching one by one
 	float percentage;
 	for (int i = 0; i < num_kernels; i++) {
+		
 		find_permutations_for_threads KERNEL_ARGS2( 1, 1 )(d_nodes, d_selectedK, d_selected, d_numNodes, d_threads_per_kernel);
 		CUDA_RUN(cudaGetLastError());
 		CUDA_RUN(cudaDeviceSynchronize());
-		combinations_kernel KERNEL_ARGS2(grid_dim, block_dim) (d_selected, d_selectedK, d_shortestPath, d_edgesWeights, d_costs, d_numNodes, &shared_cost);
+		
+		combinations_kernel KERNEL_ARGS2(grid_dim, block_dim) (d_selected, d_selectedK, d_shortestPath, d_edgesWeights, d_costs, d_numNodes);
 		CUDA_RUN(cudaGetLastError());
 		CUDA_RUN(cudaDeviceSynchronize());
 		
@@ -182,17 +183,19 @@ int main(int argc, char *argv[])
 	CUDA_RUN(cudaEventSynchronize(stopEvent));
 	CUDA_RUN(cudaEventElapsedTime(&elapsed_time, startEvent, stopEvent));
 	CUDA_RUN(cudaMemcpy(shortestPath, d_shortestPath, num_blocks * numNodes * size8, cudaMemcpyDeviceToHost));
-	CUDA_RUN(cudaMemcpy(costs, d_costs, num_blocks * sizeof(float), cudaMemcpyDeviceToHost));
+	CUDA_RUN(cudaMemcpy(cost, d_costs, num_blocks * sizeof(int32_t), cudaMemcpyDeviceToHost));
+	
+	CUDA_RUN(cudaDeviceSynchronize());
 
 	printf("\nTime passed:  %3.1f ms \n", elapsed_time);
 	print_Graph(edgesWeights, numNodes);
 
 	{
-		float min = costs[0];
+		int32_t min = cost[0];
 		int8_t index = 0;
 		for (int i = 1; i < num_blocks; i++) {
-			if (costs[i] < min) {
-				min = costs[i];
+			if (cost[i] < min) {
+				min = cost[i];
 				index = i;
 			}
 		}
@@ -203,7 +206,7 @@ int main(int argc, char *argv[])
 	free(nodes);
 	free(shortestPath);
 	free(edgesWeights);
-	free(costs);
+	free(cost);
 	free(selected);
 
 	cudaFree(d_nodes);
@@ -226,7 +229,7 @@ Error:
 	free(nodes);
 	free(shortestPath);
 	free(edgesWeights);
-	free(costs);
+	free(cost);
 	free(selected);
 
 	cudaFree(d_nodes);
@@ -247,28 +250,28 @@ Error:
 }
 
 __global__
-void find_permutations_for_threads(int8_t * city_ids, int8_t * k, int8_t * choices, int32_t * size, unsigned long long * threads_per_kernel) {
+void find_permutations_for_threads(int8_t * nodes_ids, int8_t * k, int8_t * choices, int32_t * size, unsigned long long * threads_per_kernel) {
 	int32_t length = *size;
 	int8_t index = 1;
 	unsigned long long count = 0;
 	for (count = 0; count < *threads_per_kernel; count++) {
 		for (int i = 0; i < length; i++) {
-			choices[i + count * length] = city_ids[i];
+			choices[i + count * length] = nodes_ids[i];
 		}
-		reverse(city_ids + *k + index, city_ids + length);
-		next_permutation(city_ids + index, city_ids + length);
+		reverse(nodes_ids + *k + index, nodes_ids + length);
+		next_permutation(nodes_ids + index, nodes_ids + length);
 	}
 }
 
 __global__
-void combinations_kernel(int8_t * choices, int8_t * k, int8_t * shortestPath, float ** graphWeights, float * cost, int32_t * size, float * shared_cost) {
+void combinations_kernel(int8_t * choices, int8_t * k, int8_t * shortestPath, int32_t* graphWeights, int32_t* cost, int32_t * size) {
 	uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 	int32_t length = *size;
 	int8_t index = 1;
 
 	/* local variables */
 	int8_t * _path, *_shortestPath;
-	float _tcost;
+	int32_t _tcost;
 
 	SAFE(_path = (int8_t *)malloc(length * sizeof(int8_t)));
 	SAFE(_shortestPath = (int8_t *)malloc(length * sizeof(int8_t)));
@@ -278,20 +281,23 @@ void combinations_kernel(int8_t * choices, int8_t * k, int8_t * shortestPath, fl
 
 	memcpy(_path, choices + tid * length, length * sizeof(int8_t));
 	memcpy(_shortestPath, shortestPath, length * sizeof(int8_t));
-
+	
 	if (threadIdx.x == 0) {
 		if (cost[blockIdx.x] == 0) cost[blockIdx.x] = length * 100;
-		*shared_cost = (float)length * 100;
+		shared_cost = length * 100;
 	}
 
 	cuda_SYNCTHREADS();
+		
 	
 	do {
-		copy_array(_path, _shortestPath, &_tcost, graphWeights, length, tid, shared_cost);
+		copy_array2(_path, _shortestPath, &_tcost, graphWeights, length, tid);
 	} while (next_permutation(_path + *k + index, _path + length));
 	
-	if (_tcost == *shared_cost) {
-		atomicMinOwn(&cost[blockIdx.x], _tcost);
+	
+	if (_tcost == shared_cost) {
+		//printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+		atomicMin(&cost[blockIdx.x], _tcost);
 		if (cost[blockIdx.x] == _tcost) {
 			memcpy(shortestPath + blockIdx.x * length, _shortestPath, length * sizeof(int8_t));
 		}
@@ -302,7 +308,7 @@ void combinations_kernel(int8_t * choices, int8_t * k, int8_t * shortestPath, fl
 }
 
 __host__
-void initialize(int8_t * nodes_ids, float ** nodesDistances, int32_t size)
+void initialize(int8_t * nodes_ids, int32_t* nodesDistances, int32_t size)
 {
 	std::ifstream file("NodesDistances.csv");
 
@@ -318,36 +324,41 @@ void initialize(int8_t * nodes_ids, float ** nodesDistances, int32_t size)
 		for (int col = 0; col < size; ++col)
 		{
 			std::string val;
-			std::getline(iss, val, ',');
+			std::getline(iss, val, ';');
 			if (!iss.good())
 				break;
 
 			std::stringstream convertor(val);
-			convertor >> nodesDistances[row][col];
-		}
-	}
-}
-
-__host__
-void print_Graph(float ** nodesDistances, int32_t size) {
-	int i, j;
-	for (i = 0; i < size; i++) {
-		for (j = 0; j < size; j++) {
-			printf("%3.2f\t", nodesDistances[i][j]);
+			float temp;
+			convertor >> temp;
+			//printf("%f\t",temp);
+			nodesDistances[row*size+col] = (int32_t)(temp*10000);
+			//printf("%d\t", nodesDistances[row * size + col]);
 		}
 		printf("\n");
 	}
 }
 
 __host__
-void print_ShortestPath(int8_t * shortestPath, float cost, int32_t size) {
+void print_Graph(int32_t* nodesDistances, int32_t size) {
+	int i, j;
+	for (i = 0; i < size; i++) {
+		for (j = 0; j < size; j++) {
+			printf("%3.8f\t", (float)(nodesDistances[i*size+j]*0.0001));
+		}
+		printf("\n");
+	}
+}
+
+__host__
+void print_ShortestPath(int8_t * shortestPath, int32_t cost, int32_t size) {
 	int i;
-	if (cost == (size * 100)) printf("no possible path found.\n");
+	if (cost == (size * 100)) printf("no possible path found.Cost is %d and size is %d\n",cost,size);
 	else {
 		for (i = 0; i < size; i++) {
 			printf("%d\t", shortestPath[i]);
 		}
-		printf("\nCost: %f\n", cost);
+		printf("\nCost: %f\n", cost*0.0001);
 	}
 }
 
@@ -358,18 +369,17 @@ __device__
 void reverse(int8_t *first, int8_t *last) { while ((first != last) && (first != --last)) swap(first++, last); }
 
 __device__
-void copy_array(int8_t * path, int8_t * shortestPath, float * tcost, float ** weights, int8_t length, int tid, float* shared_cost) {
+void copy_array2(int8_t * path, int8_t * shortestPath, int32_t* tcost, int32_t* weights, int8_t length, int tid) {
 	int32_t sum = 0;
 	for (int32_t i = 0; i < length; i++) {
-		float val = weights[path[i] * length][path[(i + 1) % length]];
+		int32_t val = weights[path[i] * length + path[(i + 1) % length]];
 		if (val == -1) return;
 		sum += val;
 	}
 	
 	if (sum == 0) return;
-	atomicMinOwn(shared_cost, sum);
-	
-	if (*shared_cost == sum) {
+	atomicMin(&shared_cost, sum);
+	if (shared_cost == sum) {
 		*tcost = sum;
 		memcpy(shortestPath, path, length * sizeof(int32_t));
 	}
@@ -399,7 +409,7 @@ bool next_permutation(int8_t * first, int8_t * last) {
 		}
 	}
 }
-__device__ static float atomicMinOwn(float* address, float val)
+/*__device__ static float atomicMinOwn(float* address, float val)
 {
 	int* address_as_i = (int*)address;
 	int old = *address_as_i, assumed;
@@ -409,4 +419,4 @@ __device__ static float atomicMinOwn(float* address, float val)
 			__float_as_int(::fmaxf(val, __int_as_float(assumed))));
 	} while (assumed != old);
 	return __int_as_float(old);
-}
+}*/
