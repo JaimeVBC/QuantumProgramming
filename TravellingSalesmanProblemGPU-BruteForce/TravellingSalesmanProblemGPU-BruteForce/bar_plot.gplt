@@ -1,0 +1,65 @@
+# Lines beginning with # are comments
+#
+# This file is used by running gnuplot from the command line like this:
+# $ gnuplot simple-bar.gnuplot
+# where $ is the command prompt (eg C:etc\> if on Windows)
+#
+# The file plots the data in xy.day according to the instructions given.
+#
+# The lines below are like global options, including the size and the output format. Use 
+# the commented-out line for transparency. Useful terminal types (ie output types)
+# include: emf, jpeg, postscript, png, pngcairo, pdfcairo, svg, xterm, x11 and dumb.
+# Each has its own subset of options.
+#set terminal pngcairo transparent enhanced font "arial,10" fontscale 1.0 size 600, 400 
+set terminal pngcairo enhanced font "arial,10" fontscale 1.0 size 1920, 1080 
+# Output file name
+set output 'bar_plot.png'
+# Type of graph
+set style data histogram
+
+# Visual details -- solid fill, 0.5 transparency
+set style histogram cluster gap 1
+set style fill solid 0.5
+set boxwidth 0.9
+set termopt enhanced
+# No xtics, but we do want labels, and do not mirror tics (ie show at top)
+set xtics format "" nomirror
+# y tic marks plus grid lines
+set grid ytics
+# set ytics offset -1.0
+
+# Control the look of the error bars
+set style histogram errorbars linewidth 1 
+set errorbars linecolor black
+set bars front
+# Define some custom colours using RGB; can also use standard names ("blue")
+red = "#FF0000"; green = "#00FF00"; blue = "#0000FF"; skyblue = "#87CEEB";
+# We don't set a title -- but we could by uncommenting this next line
+#set title "A Sample Bar Chart"
+#The legend ('key') -- single data set does not need one
+unset key
+# But if we want a legend, uncomment this
+# set key on outside center bottom 
+# y axis label and range -- no details needed for x axis
+set ylabel "Perfomance time (in milliseconds)"
+set xlabel "Number of nodes" 
+set yrange [0:*]
+set log y 2
+set format y "%l"
+# set logscale y 2
+# set xtics rotate
+# Actually do the plot; use cols 2-4 from the file; linecolor gives the color, 
+# linewidth 0 removes the outline of the column
+set title "GPU performance time of brute-force TSP algorithm"
+plot "aver-std-GPU.dat" using 2:3:xtic(1) title "GPU performance time of brute-force TSP algorithm" linecolor rgb skyblue
+# show title
+# if we want to output in more formats, we can add more set term lines and more output names
+# and replot; but graphs will not be identical since the drivers and file types have
+# different limitations and defaults (eg what is a line thickness of '1'?)
+set term svg enhanced font "arial,13" fontscale 1.0 size 600, 400 background "white"
+set output 'GPUResults.png'
+replot
+set term postscript eps level1 color font "Helvetica,12" fontscale 1.0 size 9cm, 6cm
+#set term postscript eps level1 enhanced color font "arial,12" fontscale 1.0 size 1920, 1080 
+set output 'simple-bar.eps'
+replot

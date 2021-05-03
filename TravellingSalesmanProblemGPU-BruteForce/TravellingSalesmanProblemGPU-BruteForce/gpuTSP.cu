@@ -287,7 +287,7 @@ void combinations_kernel(int8_t * choices, int8_t * k, int8_t * shortestPath, in
 		shared_cost = length * 100;
 	}
 
-	cuda_SYNCTHREADS();
+	__syncthreads();
 		
 	
 	do {
