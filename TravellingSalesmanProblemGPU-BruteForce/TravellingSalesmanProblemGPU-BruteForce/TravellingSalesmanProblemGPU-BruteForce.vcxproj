@@ -86,8 +86,12 @@
     <CudaCompile Include="gpuTSP.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="TSP-CPU.h" />
     <ClInclude Include="header.h" />
     <ClInclude Include="header2.cuh" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="TSP-CPU.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

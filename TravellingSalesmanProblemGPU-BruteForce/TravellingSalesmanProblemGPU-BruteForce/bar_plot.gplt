@@ -41,11 +41,11 @@ unset key
 # But if we want a legend, uncomment this
 # set key on outside center bottom 
 # y axis label and range -- no details needed for x axis
-set ylabel "Perfomance time (in milliseconds)"
+set ylabel "Perfomance time (in milliseconds) log10 scale"
 set xlabel "Number of nodes" 
 set yrange [0:*]
-set log y 2
-set format y "%l"
+set log y 10
+# set format y "%l"
 # set logscale y 2
 # set xtics rotate
 # Actually do the plot; use cols 2-4 from the file; linecolor gives the color, 
@@ -57,9 +57,9 @@ plot "aver-std-GPU.dat" using 2:3:xtic(1) title "GPU performance time of brute-f
 # and replot; but graphs will not be identical since the drivers and file types have
 # different limitations and defaults (eg what is a line thickness of '1'?)
 set term svg enhanced font "arial,13" fontscale 1.0 size 600, 400 background "white"
-set output 'GPUResults.png'
+set output 'GPUResults_log10.png'
 replot
 set term postscript eps level1 color font "Helvetica,12" fontscale 1.0 size 9cm, 6cm
 #set term postscript eps level1 enhanced color font "arial,12" fontscale 1.0 size 1920, 1080 
-set output 'simple-bar.eps'
+set output 'GPUResults_log10.eps'
 replot
