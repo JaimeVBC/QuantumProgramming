@@ -17,5 +17,5 @@ NODES -- times (access time) in ms -- energy:
 5  -- 985.3565692901611 1404.0865898132324 1255.204439163208 (35.525 36.728 38.164) -- -47.988929607
 6  -- 2125.0340938568115 3142.390489578247 3304.569721221924 (38.569 41.737 42.3)  --  -57.9629932312 // Stable and correct so far
 7  -- 9395.69067955017 6236.98091506958 13375.242233276367 (40.953 39.86 38.177)  -- -65.7180463898 //  Chain lengths over 7 WARNING but without chain breaks. Results correct
-8  -- 36479.17318344116 (45.338 45.785 39.861)  -- No sense // Multiple chain breaks. Chain_strength increased to 4.0 and one position per node violated. Increase of alpha provokes chain breaks again.
+8  -- 22544.19183731079 21073.546648025513 16920.119285583496  (45.338 45.785 39.861)  -- No sense // Multiple chain breaks. Chain_strength increased to 4.0 and one position per node violated. Increase of alpha provokes chain breaks again.
 

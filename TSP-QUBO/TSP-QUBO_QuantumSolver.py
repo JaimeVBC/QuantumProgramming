@@ -9,6 +9,10 @@ from dwave.system import DWaveSampler, EmbeddingComposite
 NUM_NODES = 8
 alpha = 20.0
 beta = 0.01
+#alpha = 141.42
+#beta = 0.1
+#chain_strength = 100.0
+
 num_reads = 200
 chain_strength = 4.0
 

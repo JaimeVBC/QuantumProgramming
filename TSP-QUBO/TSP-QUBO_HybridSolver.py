@@ -9,18 +9,18 @@ from dwave.inspector import show
 from dwave.system import DWaveSampler, LeapHybridSampler
 from hybrid import HybridSampler
 
-NUM_NODES = 15
-alpha = 10.0
+NUM_NODES = 30
+alpha = 141.42
 beta = 0.1
 num_reads = 200
-chain_strength = 2.0
+chain_strength = 100.0
 convergence = 3
 timeLimit = 5
 
 want_Chimera = True
 
 nodesDistancesMatrix = np.zeros(shape=(NUM_NODES, NUM_NODES), dtype='float')
-with open('NodesDistances.csv', 'r') as ficheroCSV:
+with open('NodesData50.csv', 'r') as ficheroCSV:
     distancesReader = csv.reader(ficheroCSV, delimiter=';')
 
     for rowIdx, row in enumerate(distancesReader):
@@ -33,7 +33,7 @@ print('Successfully filled the edges weights matrix with the file data')
 
 _QUBOdictionary = AdjDictBQM('BINARY')
 
-with open('QUBO_conf_matrix.csv', 'w') as file_CSV:
+with open('QUBO_conf_matrix_50.csv', 'w') as file_CSV:
     writer = csv.writer(file_CSV, delimiter='\t')
 
     _QUBO_configuration_matrix = np.zeros(shape=(NUM_NODES ** 2, NUM_NODES ** 2), dtype='float')
@@ -122,6 +122,7 @@ with Client.from_config() as client:
     # Nodes: {1}, Num_reads: {2}'.format(topology, NUM_NODES, num_reads), num_reads=num_reads)
 
     import time
+
     start_time = time.time()
 
     # Define the workflow
@@ -140,10 +141,13 @@ with Client.from_config() as client:
     init_state = hybrid.State.from_problem(_QUBOdictionary)
     computation = workflow.run(init_state).result()
 
+    # print execution time
+    print('Execution time for {0} nodes: {1} milliseconds'.format(NUM_NODES, (time.time() - start_time) * 1000))
+
     # Print results
     print("Solution: sample={.samples.first}".format(computation))
 
-    #sampler = HybridSampler(workflow)
+    # sampler = HybridSampler(workflow)
 
     # computation = sampler.sample_qubo(quboDict, label='Hybrid Test Topology: {0}, '
     #                                                   'Nodes: {1},'.format(
@@ -152,16 +156,12 @@ with Client.from_config() as client:
     #                                   num_reads=num_reads,
     #                                   chain_break_method=chain_breaks.discard,
     #                                   time_limit=timeLimit)
-    # print('Execution time for {0} nodes: {1} milliseconds'.format(NUM_NODES, (time.time() - start_time)*1000))
     #
     # # Print results
     # print(computation)
     print(computation.samples.first.energy)
     with open('resultsHybrid{0}.csv'.format(topology), 'w') as file_CSV:
         writer = csv.writer(file_CSV)
-        rowData = []
-        rowData.append('Energy: {0}'.format(computation.samples.first.energy))
-        rowData.append('Lowest energy solution: {0}'.format(computation.samples.first))
+        rowData = ['Energy: {0}'.format(computation.samples.first.energy),
+                   'Lowest energy solution: {0}'.format(computation.samples.first)]
         writer.writerow(rowData)
-
-
