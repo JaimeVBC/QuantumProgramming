@@ -9,7 +9,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
-//#include "sm_60_atomic_functions.h"
+
 
 
 #define MAX_THREADS 1024

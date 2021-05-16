@@ -9,6 +9,7 @@
 
 __device__ __shared__ int32_t shared_cost;
 
+// Quick implementation of factorial of a number
 __host__ unsigned long long factorial(int32_t n) {
 	int c;
 	unsigned long long result = 1;
@@ -20,31 +21,40 @@ __host__ unsigned long long factorial(int32_t n) {
 }
 
 int main(int argc, char* argv[]) {
+
+	// Two arguments need to be specified at least. Name of the programm itself and number of nodes to compute.
 	if (argc < 2) return 0;
 	int size8 = sizeof(int8_t);
 	int size32 = sizeof(int32_t);
 	unsigned long long total_permutations, thread_perms, num_blocks = 1, num_threads, num_kernels = 1;
 	float time_passed;
 	cudaEvent_t startEvent, stopEvent;
-	/* host variables */
-	int8_t* city_ids, * shortestPath, * graphWeights, * choices;
+
+	/* Host variables */
+	int8_t* nodes, * shortestPath, * graphWeights, * choices;
 	int32_t size = atoi(argv[1]), * cost;
 	int8_t selected_K = 0;
 	unsigned long long threads_per_kernel;
-	/* device variables */
-	int8_t* dev_city_ids, * dev_shortestPath, * dev_graphWeights, * dev_choices;
+
+	/* Device variables */
+	int8_t* dev_nodes_ids, * dev_shortestPath, * dev_graphWeights, * dev_choices;
 	int32_t* dev_cost, * dev_size;
 	int8_t* dev_selected_K;
 	unsigned long long* dev_threads_per_kernel;
 
-	total_permutations = factorial(size - 1);
+	total_permutations = factorial(size - 1); // Number of combinations to be computed is (N-1)! where is N is the number of nodes.
 	printf("factorial(%d): %llu\n", size - 1, total_permutations);
 
+	// Calculation of what is the max number of permutations per thread possible without exceeding MAX_PERMS
 	for (selected_K = 1; selected_K < size - 2; selected_K++) {
 		thread_perms = factorial(size - 1 - selected_K);
 		if (thread_perms < MAX_PERMS) break;
 	}
+
+	// Calculation of how many threads do we need based on the permutations per thread and the total number of permutations to be processed.
 	num_threads = total_permutations / thread_perms;
+
+	// If threads exceed the maximum, they will be equally distributed in different blocks
 	int k;
 	while (num_threads > MAX_THREADS) {
 		k = 2;
@@ -52,6 +62,8 @@ int main(int argc, char* argv[]) {
 		num_threads /= k;
 		num_blocks *= k;
 	}
+
+	// If blocks exceed the maximum, they will be equally distributed in different kernels
 	while (num_blocks > MAX_BLOCKS) {
 		k = 2;
 		while (num_blocks % k != 0) k++;
@@ -59,19 +71,24 @@ int main(int argc, char* argv[]) {
 		num_kernels *= k;
 	}
 	threads_per_kernel = num_blocks * num_threads;
+
+	// Print problem configuration
 	printf("K selected: %d\n", selected_K);
 	printf("num_threads %llu thread_perms %llu num_blocks %llu num_kernels %llu threads_per_kernel %llu\n", num_threads, thread_perms, num_blocks, num_kernels, threads_per_kernel);
 
 	dim3 block_dim(num_threads, 1, 1);
 	dim3 grid_dim(num_blocks, 1, 1);
 
-	SAFE(city_ids = (int8_t*)malloc(size * size8));
+	// Memory allocations with SAFE macro in case one of them fails due to memory not being able.
+	SAFE(nodes = (int8_t*)malloc(size * size8));
 	SAFE(shortestPath = (int8_t*)calloc(num_blocks * size, size8));
 	SAFE(graphWeights = (int8_t*)malloc(size * size8 * size));
 	SAFE(cost = (int32_t*)calloc(num_blocks * size, size32));
 	SAFE(choices = (int8_t*)malloc(threads_per_kernel * size * size8));
 
-	CUDA_RUN(cudaMalloc((void**)&dev_city_ids, size * size8));
+
+	// Device memory allocation for data in the device (GPU)
+	CUDA_RUN(cudaMalloc((void**)&dev_nodes_ids, size * size8));
 	CUDA_RUN(cudaMalloc((void**)&dev_shortestPath, size * size8 * num_blocks));
 	CUDA_RUN(cudaMalloc((void**)&dev_graphWeights, size * size8 * size));
 	CUDA_RUN(cudaMalloc((void**)&dev_cost, num_blocks * size32));
@@ -81,9 +98,10 @@ int main(int argc, char* argv[]) {
 	CUDA_RUN(cudaMalloc((void**)&dev_threads_per_kernel, sizeof(unsigned long long)));
 
 	srand(time(NULL));
-	initialize(city_ids, graphWeights, size);
+	initialize(nodes, graphWeights, size);
 
-	CUDA_RUN(cudaMemcpy(dev_city_ids, city_ids, size * size8, cudaMemcpyHostToDevice));
+	// Translation of the data from host (CPU) to the device (GPU)
+	CUDA_RUN(cudaMemcpy(dev_nodes_ids, nodes, size * size8, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(dev_shortestPath, shortestPath, size * size8 * num_blocks, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(dev_graphWeights, graphWeights, size * size8 * size, cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(dev_size, &size, size32, cudaMemcpyHostToDevice));
@@ -92,17 +110,25 @@ int main(int argc, char* argv[]) {
 	CUDA_RUN(cudaMemcpy(dev_threads_per_kernel, &threads_per_kernel, sizeof(unsigned long long), cudaMemcpyHostToDevice));
 	CUDA_RUN(cudaMemcpy(dev_cost, cost, num_blocks * size32, cudaMemcpyHostToDevice));
 
+	// Creation of time events to measure times
 	CUDA_RUN(cudaEventCreate(&startEvent));
 	CUDA_RUN(cudaEventCreate(&stopEvent));
 	CUDA_RUN(cudaEventRecord(startEvent, 0));
+
+	// Kernels launching one by one
 	float percentage;
 	for (int i = 0; i < num_kernels; i++) {
+		// Assignment of combinations to each thread
 		find_permutations_for_threads << < 1, 1 >> > (dev_city_ids, dev_selected_K, dev_choices, dev_size, dev_threads_per_kernel);
 		CUDA_RUN(cudaGetLastError());
 		CUDA_RUN(cudaDeviceSynchronize());
+
+		// Total cost calculation of each thread paths
 		combinations_kernel << < grid_dim, block_dim >> > (dev_choices, dev_selected_K, dev_shortestPath, dev_graphWeights, dev_cost, dev_size);
 		CUDA_RUN(cudaGetLastError());
 		CUDA_RUN(cudaDeviceSynchronize());
+
+		// Printing progress out in the console 
 		percentage = (100. / (float)num_kernels * (float)(i + 1));
 		printf("\rProgress : ");
 		for (int j = 0; j < 10; j++) {
@@ -121,6 +147,7 @@ int main(int argc, char* argv[]) {
 	printf("\nTime passed:  %3.1f ms \n", time_passed);
 	print_Graph(graphWeights, size);
 
+	// Search of the block with lowest cost path
 	{
 		int32_t min = cost[0];
 		int8_t index = 0;
@@ -134,14 +161,14 @@ int main(int argc, char* argv[]) {
 		print_ShortestPath(&shortestPath[index * size], min, size);
 	}
 
-Error:
-	free(city_ids);
+Error: // In case of error, memory liberation
+	free(nodes);
 	free(shortestPath);
 	free(graphWeights);
 	free(cost);
 	free(choices);
 
-	cudaFree(dev_city_ids);
+	cudaFree(dev_nodes_ids);
 	cudaFree(dev_shortestPath);
 	cudaFree(dev_graphWeights);
 	cudaFree(dev_cost);
