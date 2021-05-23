@@ -95,8 +95,8 @@ with open('QUBO_conf_matrix_50.csv', 'w') as file_CSV:
         writer.writerow(rowData)
 
 # print(_QUBO_configuration_matrix)
-print('Successfully filled the matrix with the problem QUBO modeling')
-print('Successfully filled the dictionary with the problem QUBO modeling')
+print('Successfully filled the matrix with the problem QUBO modelling')
+print('Successfully filled the dictionary with the problem QUBO modelling')
 
 quboDict = _QUBOdictionary.to_qubo()[0]  # print(quboDict)
 
@@ -127,15 +127,22 @@ with Client.from_config() as client:
 
     # Define the workflow
     iteration = hybrid.RacingBranches(
-        hybrid.InterruptableTabuSampler(),
-        hybrid.EnergyImpactDecomposer(size=5)
-        | hybrid.QPUSubproblemAutoEmbeddingSampler()
-        | hybrid.SplatComposer()
-    ) | hybrid.ArgMin()
-    workflow = hybrid.LoopUntilNoImprovement(iteration, convergence)
-    #
-    # bqm = quboDict
-    # sampler = LeapHybridSampler()
+        # Runs (races) multiple workflows of type Runnable in parallel, stopping all once the first
+        # finishes. Returns the results of all, in the specified order.
+        hybrid.InterruptableTabuSampler(),  # Tabu algorithm seek of best solutions
+        hybrid.EnergyImpactDecomposer(size=5) # Selects a subproblem of variables maximally contributing to the
+        # problem energy.
+        | hybrid.QPUSubproblemAutoEmbeddingSampler()  # A quantum sampler for a subproblem with automated heuristic
+        # minor-embedding.
+        | hybrid.SplatComposer()  # A composer that overwrites current samples with subproblem samples.
+    ) | hybrid.ArgMin()  # Selects the best state from a sequence of States
+    workflow = hybrid.LoopUntilNoImprovement(iteration,
+                                             convergence)  # Iterates Runnable for up to max_iter times,
+    # or until a state quality metric, defined by the key function, shows no improvement for at least convergence
+    # number of iterations.
+
+
+
 
     # Solve the problem
     init_state = hybrid.State.from_problem(_QUBOdictionary)
